@@ -10,13 +10,19 @@
 #include <tuple>
 #include "Fluid.h"
  
- 
 #include <iostream>
 typedef float Real;
+
+// Size of square grid
 int N = 80;
+int SCALE = 10;
+
+// GLFW variables
 GLFWwindow *gWindow = nullptr;
-int gWindowWidth = N;
-int gWindowHeight = N;
+int gWindowWidth = 2*N;
+int gWindowHeight = 2*N;
+
+// Fluid
 Fluid* fluid;
 
 // global options
@@ -34,10 +40,7 @@ bool gReflect = false;
 double lastXPos = 0.0;
 double lastYPos = 0.0;
 
-int SCALE = 10;
 GLuint VBO, VAO;
-
-
 
 // Executed each time the window is resized. Adjust the aspect ratio and the rendering viewport to the current window.
 void windowSizeCallback(GLFWwindow *window, int width, int height)
@@ -52,26 +55,27 @@ void windowSizeCallback(GLFWwindow *window, int width, int height)
 
 void initGLFW()
 {
-  // Initialize GLFW, the library responsible for window management
+  // Initialize GLFW
   if(!glfwInit()) {
     std::cerr << "ERROR: Failed to init GLFW" << std::endl;
     std::exit(EXIT_FAILURE);
   }
 
-  // Before creating the window, set some option flags
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
   // glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // only if requesting 3.0 or above
   // glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE); // for OpenGL below 3.2
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE); 
   glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 
   // Create the window
-  gWindowWidth = N*SCALE;
-  gWindowHeight = N*SCALE;
+  gWindowWidth = N;
+  gWindowHeight = N;
+
   gWindow = glfwCreateWindow(
     N*SCALE, N*SCALE,
-    "Basic Eulerian Simulator", nullptr, nullptr);
+    "Advection-Reflection-Simulator", nullptr, nullptr);
+
   if(!gWindow) {
     std::cerr << "ERROR: Failed to open window" << std::endl;
     glfwTerminate();
@@ -80,13 +84,8 @@ void initGLFW()
 
   // Load the OpenGL context in the GLFW window
   glfwMakeContextCurrent(gWindow);
-
-  // not mandatory for all, but MacOS X
   glfwGetFramebufferSize(gWindow, &gWindowWidth, &gWindowHeight);
-
-  // Connect the callbacks for interactive control
   glfwSetWindowSizeCallback(gWindow, windowSizeCallback);
-  //glfwSetKeyCallback(gWindow, keyCallback);
 
   std::cout << "Window created: " <<
     gWindowWidth << ", " << gWindowHeight << std::endl;
@@ -123,20 +122,8 @@ void initOpenGL()
   glOrtho(0, N, 0, N, 0, 1);
 }
 
-void init()
-{
-  //gSolver.initScene(48, 32, 16, 16);
-
-  initGLFW();                   // Windowing system
-  initOpenGL();
-}
-
-
-
-
 void setup(){
     fluid = new Fluid(N ,0.1, 0, 0);
-
     // int centerX = gWindowWidth / 2;  // Center X coordinate of the window
     // int centerY = gWindowHeight / 2; // Center Y coordinate of the window
 
@@ -157,9 +144,14 @@ void setup(){
     //             fluid->AddDensity(x, y, 1);
     //         }
     //     }
-    // }
+    // }      
+}
 
-      
+void init()
+{
+  initGLFW();                  
+  initOpenGL();
+  setup(); // Create Fluid
 }
 
 void FluidCubeStepReflect(Fluid *cube)
@@ -172,15 +164,22 @@ void FluidCubeStepReflect(Fluid *cube)
     float *Vy = cube->Vy;
     float *Vx0 = cube->Vx0;
     float *Vy0 = cube->Vy0;
-    float *s = cube->s;
+    float *s = cube->density0;
     float *density = cube->density;
 
     // Create temporary arrays to save Vx and Vy before modifying them
     float *u12x = new float[N * N];
     float *u12y = new float[N * N];
 
-    Fluid::Diffuse(1, Vx0, Vx, visc, dt, 4, N);
-    Fluid::Diffuse(2, Vy0, Vy, visc, dt, 4, N);
+    Fluid::buoyancy(Vy0, density, N);
+
+    for (int i = 0; i < N*N; i++)
+    {
+        Vy[i] -= dt * Vy0[i];
+    }
+
+    Fluid::Diffuse(1, Vx0, Vx, visc, dt/2, 4, N);
+    Fluid::Diffuse(2, Vy0, Vy, visc, dt/2, 4, N);
 
     Fluid::project(Vx0, Vy0, Vx, Vy, 4, N);
     
@@ -209,28 +208,8 @@ void FluidCubeStepReflect(Fluid *cube)
     // u1 = Pu~1
     Fluid::project(u12x, u12y, Vx0, Vy0, 4, N);
 
-       float gravity = 6e-4;  // Adjust the gravity value as needed
-    float ambientTemperature = 0.0;  // Adjust the ambient temperature as needed
-    float alpha = 0.1;
-
-    for (int j = 2; j < N-2 ; j++) {
-        for (int i = 2; i < N-2 ; i++) {
-            float buoyancyForceY = 0;
-            float buoyancyForceX = alpha * 0;
-            
-            //fluid->AddVelocity(x, y, 0,   dt * buoyancyForceY); 
-            // Apply buoyancy force to the vertical component of velocity
-            fluid->Vy0[Fluid::IX(i, j, N)] += fluid->dt/2 * buoyancyForceY;
-
-            // Apply buoyancy force to the horizontal component of velocity
-            fluid->Vx0[Fluid::IX(i, j, N)] += fluid->dt/2 * 0;
-        } 
-    }
-
-
-    Fluid::Diffuse(0, s, density, diff, dt, 4, N);
-    Fluid::advect(0, density, s, u12x, u12y, dt, N);
-
+    Fluid::Diffuse(0, s, density, diff, dt/2, 4, N);
+    Fluid::advect(0, density, s, u12x, u12y, dt/2, N);
     
     delete[] u12x;
     delete[] u12y;
@@ -248,8 +227,15 @@ void FluidCubeStep(Fluid *cube)
     float *Vy = cube->Vy;
     float *Vx0 = cube->Vx0;
     float *Vy0 = cube->Vy0;
-    float *s = cube->s;
+    float *s = cube->density0;
     float *density = cube->density;
+
+    Fluid::buoyancy(Vy0, density, N);
+
+    for (int i = 0; i < N*N; i++)
+    {
+        Vy[i] -= dt/2 * Vy0[i];
+    }
 
     Fluid::Diffuse(1, Vx0, Vx, visc, dt, 4, N);
     Fluid::Diffuse(2, Vy0, Vy, visc, dt, 4, N);
@@ -269,40 +255,15 @@ void FluidCubeStep(Fluid *cube)
 
 void render()
 {
+    //Objstacles
+    int lower_bound = (N - 1) / 2 - 2;
+    int upper_bound = (N - 1) / 2 + 2;
+
     glClearColor(.4f, .4f, .4f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     glBegin(GL_QUADS);
     float squareSize = 1.0; // Set the size of each square
-
-    float * VxVector = fluid->Vx;
-    float * VyVector = fluid->Vy;
-
-    // Initialize max and min values with the first element
-    float maxVx = VxVector[0];
-    float minVx = VxVector[0];
-
-    float maxVy = VyVector[0];
-    float minVy = VyVector[0];
-
-    // Find max and min values in Vx
-    for (size_t i = 1; i < N * N; ++i) {
-        if (VxVector[i] > maxVx) {
-            maxVx = VxVector[i];
-        }
-        if (VxVector[i] < minVx) {
-            minVx = VxVector[i];
-        }
-    }
-
-    for (int i = 1; i < N * N; ++i) {
-      if (VyVector[i] > maxVy) {
-          maxVy = VyVector[i];
-      }
-      if (VyVector[i] < minVy) {
-          minVy = VyVector[i];
-      }
-    }
 
     for(int i = 0; i < N; ++i) {
         for(int j = 0; j < N; ++j) {
@@ -310,15 +271,12 @@ void render()
             float d = fluid->density[fluid->IX(i,j, N)];
             float vx = fluid->Vx[fluid->IX(i,j, N)];
             float vy = fluid->Vy[fluid->IX(i,j, N)];
+            glColor3f(d, d, d);
+            if(i == 0 || i == N-1 || j == 0 || j == N-1)
+              glColor3f(.0, .0, 1.0);
 
-            float normalizedVx = (vx - minVx) / (maxVx - minVx);
-            float normalizedVy = (vy - minVy) / (maxVy - minVy);
-
-            // Ensure that the normalized values are in the range [0, 1]
-            normalizedVx = std::max(0.0f, std::min(1.0f, normalizedVx));
-            normalizedVy = std::max(0.0f, std::min(1.0f, normalizedVy));
-            //std::cout << vy << std::endl;
-            glColor3f(d * normalizedVy * normalizedVy, d * normalizedVx * normalizedVx, 1-d);
+            if(i >= lower_bound && i < upper_bound && j >= 10 && j <= 11)
+              glColor3f(.0, .0, 1.0);
 
             glVertex2f(static_cast<Real>(i), static_cast<Real>(j));
             glVertex2f(static_cast<Real>(i + squareSize), static_cast<Real>(j));
@@ -363,12 +321,12 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
           
       } else if (key == GLFW_KEY_N) {
           // Perform action for 'n'
-          for (int i = 0; i < N * N; ++i) {
-              std::cout << fluid->density[i] << " ";
-          }
-          std::cout << std::endl;
 
-          std::cin.get();
+            for(int j = 0; j < N; ++j){
+              if(fluid->Vy[(N-1)*(N-1)+j] > 0.1)
+                std::cout << fluid->Vy[(N-1)*(N-1)+j] << " ";
+            }
+
 
           std::cout << "Key 'n' pressed!" << std::endl;
       } else if (key == GLFW_KEY_C) {
@@ -390,38 +348,51 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 
 
 int main() {
-    setup();
     init();
 
 
     glfwSetMouseButtonCallback(gWindow, mouseButtonCallback);
     glfwSetKeyCallback(gWindow, keyCallback);
     while(!glfwWindowShouldClose(gWindow)) {
+        // for(int i = N/2-25; i <= N/2 - 20; i++){
+        //   for(int j = 3; j < 4; j++){
+        //     fluid->AddDensity(i, j, 0.1);
+        //     //fluid->AddVelocity(i, j, 0,  0.02)V;
+        //   }
+        //  }
+
+        // for(int i = N/2+20; i <= N/2+25; i++){
+        //   for(int j = 3; j < 4; j++){
+        //     fluid->AddDensity(i, j, 0.1);
+        //     //fluid->AddVelocity(i, j, 0,  0.02);
+        //   }
+        // }
         if (leftMouseButtonPressed) {
             double xpos, ypos;
             glfwGetCursorPos(gWindow, &xpos, &ypos);
-            //fluid->printVelocity();
-            // Convert screen coordinates to OpenGL coordinates
+        
             int x = static_cast<float>(xpos / gWindowWidth * N);
             int y = static_cast<float>((gWindowHeight - ypos) / gWindowHeight * N);
             fluid->AddDensity(x, y, 0.5);
-            //fluid->AddVelocity(x, y, xpos - lastXPos,  ypos - lastYPos);
-            //fluid->AddVelocity(x, y, 0,  0.02);
-            //std::cout << "Mouse position: (" << xpos - lastXPos << ", " << ypos - lastYPos << ")" << std::endl;
-            lastXPos = xpos;
-            lastYPos = ypos;
-            //std::cout << x << " " <<  y << std::endl;
-        
+            //fluid->AddVelocity(x, y, 0,  0.01);
         }
+
+        // fluid->ApplyBuoyancyForce(fluid->Vx, fluid->Vy, fluid->density, 0.01
+        // , 0.01, fluid->dt, N);
+        //fluid->ApplyVortexForce(fluid->Vx, fluid->Vy, fluid->density, N-5, 5, 0.0001, fluid->dt, N);
 
         if(gReflect)
           FluidCubeStepReflect(fluid);
         else
           FluidCubeStep(fluid);
 
+        for (int i = 0; i < N*N; i++){ fluid->Vx0[i] = 0; fluid->Vy0[i] = 0; }
+
+
         render();
         glfwSwapBuffers(gWindow);
         glfwPollEvents();
+
         if(gReset){
           delete fluid;
           setup();
@@ -435,7 +406,7 @@ int main() {
         if (elapsedSeconds >= 1) {
             float acum = 0;
             for (int i = 0; i < N*N; i++){
-              acum += fluid->density[i];
+              acum += (fluid->Vx[i]*fluid->Vx[i] + fluid->Vy[i]*fluid->Vy[i])/2;
             }
             std::cout << acum << std::endl;
             lastPrintTime = currentTime;

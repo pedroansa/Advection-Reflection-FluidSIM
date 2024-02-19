@@ -22,6 +22,7 @@ public:
     static void LinSolve(int b, float* x, float* x0, float a, float c, int iter, int N);
     static void SetBnd(int b, float* x, int N);
 
+    static void buoyancy(float* Fbuoy, float* density, int size);
     static void project(float *velocX, float *velocY, float *p, float *div, int iter, int N);
     static void advect(int b, float *d, float *d0, float *velocX, float *velocY, float dt, int N);
 
@@ -31,7 +32,7 @@ public:
     int diff;
     int visc;
 
-    float* s;
+    float* density0;
     float* density;
     float* Vx;
     float* Vy;

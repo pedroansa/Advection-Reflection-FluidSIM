@@ -7,7 +7,7 @@
 // Constructor
 Fluid::Fluid(int size, float dt, float diff, float visc) : size(size), dt(dt), diff(diff), visc(visc) {
     // Allocate memory for arrays
-    s = new float[size * size]();      // Using () initializes with zeros
+    density0 = new float[size * size]();     
     density = new float[size * size]();
     Vx = new float[size * size]();
     Vy = new float[size * size]();
@@ -18,14 +18,14 @@ Fluid::Fluid(int size, float dt, float diff, float visc) : size(size), dt(dt), d
 // Destructor
 Fluid::~Fluid() {
     // Deallocate memory
-    delete[] s;
+    delete[] density0;
     delete[] density;
     delete[] Vx;
     delete[] Vy;
     delete[] Vx0;
     delete[] Vy0;
 }
-    //Goes form 3d to our 1d array
+    //Goes from 2d to 1d array
 int Fluid::IX(int x, int y, int N) {
     x = (x < 0) ? 0 : (x >= N) ? N - 1 : x;
     y = (y < 0) ? 0 : (y >= N) ? N - 1 : y;
@@ -65,8 +65,8 @@ bool isValidIndex(int i, int j, int N) {
 void Fluid::LinSolve(int b, float* x, float* x0, float a, float c, int iter, int N) {
     float cRecip = 1.0 / c;
     for (int k = 0; k < iter; k++) {
-        for (int j = 2; j < N - 2; j++) {
-            for (int i = 2; i < N - 2; i++) {
+        for (int j = 1; j < N - 1; j++) {
+            for (int i = 1; i < N - 1; i++) {
                 x[Fluid::IX(i, j, N)] = (x0[Fluid::IX(i, j, N)] + a * (x[Fluid::IX(i+1, j,N)]
                                                                 +x[Fluid::IX(i-1, j  , N)]
                                                                 +x[Fluid::IX(i  , j+1, N)]
@@ -79,28 +79,49 @@ void Fluid::LinSolve(int b, float* x, float* x0, float a, float c, int iter, int
 }
 
 void Fluid::SetBnd(int b, float* x, int N) {
-    for (int i = 1; i < N - 2; i++) {
-        x[Fluid::IX(i, 1, N)] = b == 2 ? -x[Fluid::IX(i, 2, N)] : x[Fluid::IX(i, 2, N)];
-        x[Fluid::IX(i, N - 2, N)] = b == 2 ? -x[Fluid::IX(i, N - 3, N)] : x[Fluid::IX(i, N - 3, N)];
+    //Cilling floor
+    for (int i = 1; i < N - 1; i++) {
+        x[Fluid::IX(i, 0, N)] = b == 2 ? -x[Fluid::IX(i, 1, N)] : x[Fluid::IX(i, 1, N)];
+        x[Fluid::IX(i, N - 1, N)] = b == 2 ? -x[Fluid::IX(i, N - 2, N)] : x[Fluid::IX(i, N - 2, N)];
+    }
+    // Walls 
+    for (int j = 1; j < N - 1; j++) {
+        x[Fluid::IX(0, j, N)] = b == 1 ? -x[Fluid::IX(1, j, N)] : x[Fluid::IX(1, j, N)];
+        x[Fluid::IX(N - 1, j, N)] = b == 1 ? -x[Fluid::IX(N - 2, j, N)] : x[Fluid::IX(N - 2, j, N)];
     }
 
-    for (int j = 1; j < N - 2; j++) {
-        x[Fluid::IX(1, j, N)] = b == 1 ? -x[Fluid::IX(1, j, N)] : x[Fluid::IX(1, j, N)];
-        x[Fluid::IX(N - 2, j, N)] = b == 1 ? -x[Fluid::IX(N - 3, j, N)] : x[Fluid::IX(N - 3, j, N)];
+    int colum = 10;
+
+    for (int i = (N - 1)/2 - 2; i < (N - 1)/2 + 2; i++) {
+        x[Fluid::IX(i, colum, N)] = b == 2 ? -x[Fluid::IX(i, colum - 1, N)] : x[Fluid::IX(i, colum - 1, N)];
+        x[Fluid::IX(i, colum + 1, N)] = b == 2 ? -x[Fluid::IX(i, colum + 2, N)] : x[Fluid::IX(i, colum + 2, N)];
     }
+    // //Custom wall
+    // for (int i = 1; i < (N - 1)/2; i++) {
+    //     x[Fluid::IX(i, (N-1)/2, N)] = b == 2 ? -x[Fluid::IX(i, (N-1)/2 - 1, N)] : x[Fluid::IX(i, (N-1)/2 - 1, N)];
+    //     x[Fluid::IX(i, (N-1)/2 + 1, N)] = b == 2 ? -x[Fluid::IX(i, (N-1)/2 + 2, N)] : x[Fluid::IX(i, (N-1)/2 + 2, N)];
+    // }
+    // //Custom wall
+    // for (int i = (N - 1)/2 + 2; i < (N - 1); i++) {
+    //     x[Fluid::IX(i, (N-1)/2, N)] = b == 2 ? -x[Fluid::IX(i, (N-1)/2 - 1, N)] : x[Fluid::IX(i, (N-1)/2 - 1, N)];
+    //     x[Fluid::IX(i, (N-1)/2 + 1, N)] = b == 2 ? -x[Fluid::IX(i, (N-1)/2 + 2, N)] : x[Fluid::IX(i, (N-1)/2 + 2, N)];
+    // }
+    // x[Fluid::IX(0, (N-1)/2, N)] = 0.5f * (x[Fluid::IX(1, (N-1)/2, N)] + x[Fluid::IX(0, (N-1)/2 - 1, N)]);
+    // x[Fluid::IX(N-1, (N-1)/2, N)] = 0.5f * (x[Fluid::IX(N-2, (N-1)/2, N)] + x[Fluid::IX(N-1, (N-1)/2 - 1, N)]);
 
 
-    x[Fluid::IX(1, 1, N)] = 0.5f * (x[Fluid::IX(1, 0, N)] + x[Fluid::IX(0, 1, N)]);
-    x[Fluid::IX(1, N - 2, N)] = 0.5f * (x[Fluid::IX(1, N - 2, N)] + x[Fluid::IX(0, N - 3, N)]);
-    x[Fluid::IX(N - 2, 1, N)] = 0.5f * (x[Fluid::IX(N - 3, 0, N)] + x[Fluid::IX(N - 2, 1, N)]);
-    x[Fluid::IX(N - 2, N - 2, N)] = 0.5f * (x[Fluid::IX(N - 3, N - 2, N)] + x[Fluid::IX(N - 2, N - 3,N)]);
+
+    x[Fluid::IX(0, 0, N)] = 0.5f * (x[Fluid::IX(1, 0, N)] + x[Fluid::IX(0, 1, N)]);
+    x[Fluid::IX(0, N - 1, N)] = 0.5f * (x[Fluid::IX(1, N - 1, N)] + x[Fluid::IX(0, N - 2, N)]);
+    x[Fluid::IX(N - 1, 0, N)] = 0.5f * (x[Fluid::IX(N - 2, 0, N)] + x[Fluid::IX(N - 1, 1, N)]);
+    x[Fluid::IX(N - 1, N - 1, N)] = 0.5f * (x[Fluid::IX(N - 2, N - 1, N)] + x[Fluid::IX(N - 1, N - 2,N)]);
     
 }
 
 void Fluid::project(float *velocX, float *velocY, float *p, float *div, int iter, int N)
 {
-    for (int j = 2; j < N - 2; j++) {
-        for (int i = 2; i < N - 2; i++) {
+    for (int j = 1; j < N - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
             div[IX(i, j, N)] = -0.5f*(velocX[Fluid::IX(i+1, j  ,N)]
                                     -velocX[Fluid::IX(i-1, j  , N)]
                                     +velocY[Fluid::IX(i  , j+1, N)]
@@ -113,8 +134,8 @@ void Fluid::project(float *velocX, float *velocY, float *p, float *div, int iter
     SetBnd(0, p, N);
     LinSolve(0, p, div, 1, 6, iter, N);
     
-    for (int j = 2; j < N - 2; j++) {
-        for (int i = 2; i < N - 2; i++) {
+    for (int j = 1; j < N - 1; j++) {
+        for (int i = 1; i < N - 1; i++) {
             velocX[Fluid::IX(i, j, N)] -= 0.5f * (  p[Fluid::IX(i+1, j, N)] -p[Fluid::IX(i-1, j, N)]) * N;
             velocY[Fluid::IX(i, j, N)] -= 0.5f * (  p[Fluid::IX(i, j+1, N)] -p[Fluid::IX(i, j-1, N)]) * N;
         }
@@ -139,8 +160,8 @@ void Fluid::advect(int b, float *d, float *d0, float *velocX, float *velocY, flo
     int i, j;
     
     
-    for (j = 2, jfloat = 2; j < N - 2; j++, jfloat++) {
-        for (i = 2, ifloat = 2; i < N - 2; i++, ifloat++) {
+    for (j = 1, jfloat = 1; j < N - 1; j++, jfloat++) {
+        for (i = 1, ifloat = 1; i < N - 1; i++, ifloat++) {
             tmp1 = dtx * velocX[Fluid::IX(i, j, N)];
             tmp2 = dty * velocY[Fluid::IX(i, j, N)];
             
@@ -199,28 +220,34 @@ void Fluid::printVelocity() {
     }
 }
 
-void Fluid::ApplyBuoyancyForce(float *velocX, float *velocY, float *density, float alpha, float beta, float dt, int N) {
-    float gravity = 9.8;  // Adjust the gravity value as needed
-    float ambientTemperature = 0.0;  // Adjust the ambient temperature as needed
+void Fluid::buoyancy(float* Fbuoy, float* density, int size)
+    {
+        int N = size;
+        float Tamb = 0;
+        float a = 0.000625f;
+        float b = 0.025f;
 
-    for (int j = 0; j < N-1 ; j++) {
-        for (int i = 0; i < N-1 ; i++) {
-            float buoyancyForceY = alpha * (density[Fluid::IX(i, j, N)]) ;
-            float buoyancyForceX = 0;
-            
-            //fluid->AddVelocity(x, y, 0,   dt * buoyancyForceY);
-            // Apply buoyancy force to the vertical component of velocity
-            velocY[Fluid::IX(i, j, N)] += dt * buoyancyForceY;
+        // sum all temperatures
+        for (int i = 1; i <= N; i++)
+        {
+            for (int j = 1; j <= N; j++)
+            {
+                Tamb += density[Fluid::IX(i, j, N)];
+            }
+        }
 
-            // Apply buoyancy force to the horizontal component of velocity
-            velocX[Fluid::IX(i, j, N)] += dt * buoyancyForceX;
+        // get average temperature
+        Tamb /= (N * N);
+
+        // for each cell compute buoyancy force
+        for (int i = 1; i <= N; i++)
+        {
+            for (int j = 1; j <= N; j++)
+            {
+                Fbuoy[Fluid::IX(i, j, N)] = a * density[Fluid::IX(i, j, N)] + -b * (density[Fluid::IX(i, j, N)] - Tamb);
+            }
         }
     }
-
-    SetBnd(2, velocY, N);  
-
-    SetBnd(1, velocX, N);
-}
 
 
 
